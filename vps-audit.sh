@@ -7,8 +7,8 @@ YELLOW='\033[1;33m'
 GRAY='\033[0;90m'
 NC='\033[0m' # No Color
 
-# Get current datetime for the report filename
-TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+# Get current timestamp for the report filename
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 REPORT_FILE="vps-audit-report-${TIMESTAMP}.txt"
 
 # Function to check and report with three states
@@ -34,10 +34,26 @@ check_security() {
     echo "" >> "$REPORT_FILE"
 }
 
-echo "Starting security audit..."
-echo "Security Audit Report - $(date)" > "$REPORT_FILE"
+echo "Starting VPS audit..."
+echo "VPS Audit Report - $(date)" > "$REPORT_FILE"
 echo "================================" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
+
+# Check system uptime
+UPTIME=$(uptime -p)
+UPTIME_SINCE=$(uptime -s)
+echo -e "\nSystem Uptime Information:" >> "$REPORT_FILE"
+echo "Current uptime: $UPTIME" >> "$REPORT_FILE"
+echo "System up since: $UPTIME_SINCE" >> "$REPORT_FILE"
+echo "" >> "$REPORT_FILE"
+echo -e "System Uptime: $UPTIME (since $UPTIME_SINCE)"
+
+# Check if system requires restart
+if [ -f /var/run/reboot-required ]; then
+    check_security "System Restart" "WARN" "System requires a restart to apply updates"
+else
+    check_security "System Restart" "PASS" "No restart required"
+fi
 
 # Check SSH root login
 if grep -q "^PermitRootLogin.*no" /etc/ssh/sshd_config; then
@@ -128,33 +144,42 @@ else
 fi
 
 # Check disk space usage
+DISK_TOTAL=$(df -h / | awk 'NR==2 {print $2}')
+DISK_USED=$(df -h / | awk 'NR==2 {print $3}')
+DISK_AVAIL=$(df -h / | awk 'NR==2 {print $4}')
 DISK_USAGE=$(df -h / | awk 'NR==2 {print int($5)}')
 if [ "$DISK_USAGE" -lt 50 ]; then
-    check_security "Disk Usage" "PASS" "Healthy disk space available (${DISK_USAGE}% used)"
+    check_security "Disk Usage" "PASS" "Healthy disk space available (${DISK_USAGE}% used - Used: ${DISK_USED} of ${DISK_TOTAL}, Available: ${DISK_AVAIL})"
 elif [ "$DISK_USAGE" -lt 80 ]; then
-    check_security "Disk Usage" "WARN" "Disk space usage is moderate (${DISK_USAGE}% used)"
+    check_security "Disk Usage" "WARN" "Disk space usage is moderate (${DISK_USAGE}% used - Used: ${DISK_USED} of ${DISK_TOTAL}, Available: ${DISK_AVAIL})"
 else
-    check_security "Disk Usage" "FAIL" "Critical disk space usage (${DISK_USAGE}% used) - system stability at risk"
+    check_security "Disk Usage" "FAIL" "Critical disk space usage (${DISK_USAGE}% used - Used: ${DISK_USED} of ${DISK_TOTAL}, Available: ${DISK_AVAIL})"
 fi
 
 # Check memory usage
-MEM_USAGE=$(free | awk '/Mem:/ {printf "%.0f", $3/$2 * 100}')
+MEM_TOTAL=$(free -h | awk '/^Mem:/ {print $2}')
+MEM_USED=$(free -h | awk '/^Mem:/ {print $3}')
+MEM_AVAIL=$(free -h | awk '/^Mem:/ {print $7}')
+MEM_USAGE=$(free | awk '/^Mem:/ {printf "%.0f", $3/$2 * 100}')
 if [ "$MEM_USAGE" -lt 50 ]; then
-    check_security "Memory Usage" "PASS" "Healthy memory usage (${MEM_USAGE}% used)"
+    check_security "Memory Usage" "PASS" "Healthy memory usage (${MEM_USAGE}% used - Used: ${MEM_USED} of ${MEM_TOTAL}, Available: ${MEM_AVAIL})"
 elif [ "$MEM_USAGE" -lt 80 ]; then
-    check_security "Memory Usage" "WARN" "Moderate memory usage (${MEM_USAGE}% used)"
+    check_security "Memory Usage" "WARN" "Moderate memory usage (${MEM_USAGE}% used - Used: ${MEM_USED} of ${MEM_TOTAL}, Available: ${MEM_AVAIL})"
 else
-    check_security "Memory Usage" "FAIL" "Critical memory usage (${MEM_USAGE}% used) - performance impact likely"
+    check_security "Memory Usage" "FAIL" "Critical memory usage (${MEM_USAGE}% used - Used: ${MEM_USED} of ${MEM_TOTAL}, Available: ${MEM_AVAIL})"
 fi
 
 # Check CPU usage
+CPU_CORES=$(nproc)
 CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print int($2)}')
+CPU_IDLE=$(top -bn1 | grep "Cpu(s)" | awk '{print int($8)}')
+CPU_LOAD=$(uptime | awk -F'load average:' '{ print $2 }' | awk -F',' '{ print $1 }' | tr -d ' ')
 if [ "$CPU_USAGE" -lt 50 ]; then
-    check_security "CPU Usage" "PASS" "Healthy CPU usage (${CPU_USAGE}% used)"
+    check_security "CPU Usage" "PASS" "Healthy CPU usage (${CPU_USAGE}% used - Active: ${CPU_USAGE}%, Idle: ${CPU_IDLE}%, Load: ${CPU_LOAD}, Cores: ${CPU_CORES})"
 elif [ "$CPU_USAGE" -lt 80 ]; then
-    check_security "CPU Usage" "WARN" "Moderate CPU usage (${CPU_USAGE}% used)"
+    check_security "CPU Usage" "WARN" "Moderate CPU usage (${CPU_USAGE}% used - Active: ${CPU_USAGE}%, Idle: ${CPU_IDLE}%, Load: ${CPU_LOAD}, Cores: ${CPU_CORES})"
 else
-    check_security "CPU Usage" "FAIL" "Critical CPU usage (${CPU_USAGE}% used) - investigate high load"
+    check_security "CPU Usage" "FAIL" "Critical CPU usage (${CPU_USAGE}% used - Active: ${CPU_USAGE}%, Idle: ${CPU_IDLE}%, Load: ${CPU_LOAD}, Cores: ${CPU_CORES})"
 fi
 
 # Check sudo configuration
@@ -183,10 +208,21 @@ else
     check_security "SUID Files" "FAIL" "Found $SUID_FILES suspicious SUID files - potential privilege escalation risk"
 fi
 
-echo -e "\nSecurity audit complete. Full report saved to $REPORT_FILE"
+# Add system information summary to report
+echo "================================" >> "$REPORT_FILE"
+echo "System Information Summary:" >> "$REPORT_FILE"
+echo "Hostname: $(hostname)" >> "$REPORT_FILE"
+echo "Kernel: $(uname -r)" >> "$REPORT_FILE"
+echo "OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)" >> "$REPORT_FILE"
+echo "CPU Cores: $(nproc)" >> "$REPORT_FILE"
+echo "Total Memory: $(free -h | awk '/^Mem:/ {print $2}')" >> "$REPORT_FILE"
+echo "Total Disk Space: $(df -h / | awk 'NR==2 {print $2}')" >> "$REPORT_FILE"
+echo "================================" >> "$REPORT_FILE"
+
+echo -e "\nVPS audit complete. Full report saved to $REPORT_FILE"
 echo -e "Review $REPORT_FILE for detailed recommendations."
 
 # Add summary to report
 echo "================================" >> "$REPORT_FILE"
-echo "End of Security Audit Report" >> "$REPORT_FILE"
+echo "End of VPS Audit Report" >> "$REPORT_FILE"
 echo "Please review all failed checks and implement the recommended fixes." >> "$REPORT_FILE"
