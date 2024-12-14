@@ -133,14 +133,41 @@ else
     check_security "Running Services" "FAIL" "Too many services running ($SERVICES) - increases attack surface"
 fi
 
-# Check active internet connections
-CONNECTIONS=$(netstat -tuln | grep LISTEN | wc -l)
-if [ "$CONNECTIONS" -lt 10 ]; then
-    check_security "Open Ports" "PASS" "Minimal ports open ($CONNECTIONS) - good security posture"
-elif [ "$CONNECTIONS" -lt 20 ]; then
-    check_security "Open Ports" "WARN" "$CONNECTIONS ports open - consider closing unnecessary ports"
+# Check ports
+LISTENING_PORTS=$(netstat -tuln | grep LISTEN)
+PORT_COUNT=$(echo "$LISTENING_PORTS" | wc -l)
+
+# Get list of internet-accessible ports, excluding those explicitly denied by UFW
+PUBLIC_PORTS=$(netstat -tuln | grep LISTEN | \
+    awk '$4 !~ /127.0.0.1|::1/ && ($4 ~ /0.0.0.0/ || $4 ~ /::/)' | \
+    awk '{split($4, a, ":"); print a[length(a)]}' | sort -n | while read port; do
+        # Skip ports that are explicitly denied in UFW
+        if ! ufw status | grep -q "^$port.*DENY"; then
+            echo "$port"
+        fi
+    done | tr '\n' ',' | sed 's/,$//')
+
+INTERNET_PORTS=$(echo "$PUBLIC_PORTS" | tr ',' '\n' | wc -l)
+
+# Function to format the message with proper indentation for the report file
+format_for_report() {
+    local message="$1"
+    echo "$message" >> "$REPORT_FILE"
+}
+
+# Evaluate security based on both total ports and internet-accessible ports
+if [ "$PORT_COUNT" -lt 10 ] && [ "$INTERNET_PORTS" -lt 3 ]; then
+    RESULT="${GREEN}[PASS]${NC} Port Security ${GRAY}- Good configuration (Total: $PORT_COUNT, Public: $INTERNET_PORTS accessible ports): $PUBLIC_PORTS${NC}"
+    echo -e "$RESULT"
+    format_for_report "[PASS] Port Security - Good configuration (Total: $PORT_COUNT, Public: $INTERNET_PORTS accessible ports): $PUBLIC_PORTS"
+elif [ "$PORT_COUNT" -lt 20 ] && [ "$INTERNET_PORTS" -lt 5 ]; then
+    RESULT="${YELLOW}[WARN]${NC} Port Security ${GRAY}- Review recommended (Total: $PORT_COUNT, Public: $INTERNET_PORTS accessible ports): $PUBLIC_PORTS${NC}"
+    echo -e "$RESULT"
+    format_for_report "[WARN] Port Security - Review recommended (Total: $PORT_COUNT, Public: $INTERNET_PORTS accessible ports): $PUBLIC_PORTS"
 else
-    check_security "Open Ports" "FAIL" "Too many open ports ($CONNECTIONS) - significant attack surface"
+    RESULT="${RED}[FAIL]${NC} Port Security ${GRAY}- High exposure (Total: $PORT_COUNT, Public: $INTERNET_PORTS accessible ports): $PUBLIC_PORTS${NC}"
+    echo -e "$RESULT"
+    format_for_report "[FAIL] Port Security - High exposure (Total: $PORT_COUNT, Public: $INTERNET_PORTS accessible ports): $PUBLIC_PORTS"
 fi
 
 # Check disk space usage
