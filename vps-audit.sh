@@ -111,10 +111,14 @@ else
 fi
 
 # Check SSH config overrides
-SSH_OVERRIDES=$(grep "^Include" /etc/ssh/sshd_config | awk '{print $2}')
+SSH_CONFIG_OVERRIDES=$(grep "^Include" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}')
 
-# Check SSH root login
-SSH_ROOT=$(grep "^PermitRootLogin" $SSH_OVERRIDES /etc/ssh/sshd_config | head -1 | awk '{print $2}')
+# Check SSH root login (handle both main config and overrides if they exist)
+if [ -n "$SSH_CONFIG_OVERRIDES" ] && [ -d "$(dirname "$SSH_CONFIG_OVERRIDES")" ]; then
+    SSH_ROOT=$(grep "^PermitRootLogin" $SSH_CONFIG_OVERRIDES /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+else
+    SSH_ROOT=$(grep "^PermitRootLogin" /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+fi
 if [ -z "$SSH_ROOT" ]; then
     SSH_ROOT="prohibit-password"
 fi
@@ -124,8 +128,12 @@ else
     check_security "SSH Root Login" "FAIL" "Root login is currently allowed - this is a security risk. Disable it in /etc/ssh/sshd_config"
 fi
 
-# Check SSH password authentication
-SSH_PASSWORD=$(grep "^PasswordAuthentication" $SSH_OVERRIDES /etc/ssh/sshd_config | head -1 | awk '{print $2}')
+# Check SSH password authentication (handle both main config and overrides if they exist)
+if [ -n "$SSH_CONFIG_OVERRIDES" ] && [ -d "$(dirname "$SSH_CONFIG_OVERRIDES")" ]; then
+    SSH_PASSWORD=$(grep "^PasswordAuthentication" $SSH_CONFIG_OVERRIDES /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+else
+    SSH_PASSWORD=$(grep "^PasswordAuthentication" /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+fi
 if [ -z "$SSH_PASSWORD" ]; then
     SSH_PASSWORD="yes"
 fi
@@ -136,7 +144,11 @@ else
 fi
 
 # Check SSH default port
-SSH_PORT=$(grep "^Port" $SSH_OVERRIDES /etc/ssh/sshd_config | head -1 | awk '{print $2}')
+if [ -n "$SSH_CONFIG_OVERRIDES" ] && [ -d "$(dirname "$SSH_CONFIG_OVERRIDES")" ]; then
+    SSH_PORT=$(grep "^Port" $SSH_CONFIG_OVERRIDES /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+else
+    SSH_PORT=$(grep "^Port" /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+fi
 if [ -z "$SSH_PORT" ]; then
     SSH_PORT="22"
 fi
