@@ -110,22 +110,33 @@ else
     check_security "System Restart" "PASS" "No restart required"
 fi
 
+# Check SSH config overrides
+SSH_OVERRIDES=$(grep "^Include" /etc/ssh/sshd_config | awk '{print $2}')
+
 # Check SSH root login
-if grep -q "^PermitRootLogin.*no" /etc/ssh/sshd_config; then
+SSH_ROOT=$(grep "^PermitRootLogin" $SSH_OVERRIDES /etc/ssh/sshd_config | head -1 | awk '{print $2}')
+if [ -z "$SSH_ROOT" ]; then
+    SSH_ROOT="prohibit-password"
+fi
+if [ "$SSH_ROOT" = "no" ]; then
     check_security "SSH Root Login" "PASS" "Root login is properly disabled in SSH configuration"
 else
     check_security "SSH Root Login" "FAIL" "Root login is currently allowed - this is a security risk. Disable it in /etc/ssh/sshd_config"
 fi
 
 # Check SSH password authentication
-if grep -q "^PasswordAuthentication.*no" /etc/ssh/sshd_config; then
+SSH_PASSWORD=$(grep "^PasswordAuthentication" $SSH_OVERRIDES /etc/ssh/sshd_config | head -1 | awk '{print $2}')
+if [ -z "$SSH_PASSWORD" ]; then
+    SSH_PASSWORD="yes"
+fi
+if [ "$SSH_PASSWORD" = "no" ]; then
     check_security "SSH Password Auth" "PASS" "Password authentication is disabled, key-based auth only"
 else
     check_security "SSH Password Auth" "FAIL" "Password authentication is enabled - consider using key-based authentication only"
 fi
 
 # Check SSH default port
-SSH_PORT=$(grep "^Port" /etc/ssh/sshd_config | awk '{print $2}')
+SSH_PORT=$(grep "^Port" $SSH_OVERRIDES /etc/ssh/sshd_config | head -1 | awk '{print $2}')
 if [ -z "$SSH_PORT" ]; then
     SSH_PORT="22"
 fi
