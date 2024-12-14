@@ -135,12 +135,62 @@ else
     check_security "SSH Port" "PASS" "Using non-default port $SSH_PORT which helps prevent automated attacks"
 fi
 
-# Check UFW status
-if ufw status | grep -q "active"; then
-    check_security "Firewall Status" "PASS" "UFW firewall is active and protecting your system"
-else
-    check_security "Firewall Status" "FAIL" "UFW firewall is not active - your system is exposed to network attacks"
-fi
+# Check Firewall Status
+check_firewall_status() {
+    if command -v ufw >/dev/null 2>&1; then
+        if ufw status | grep -q "active"; then
+            check_security "Firewall Status (UFW)" "PASS" "UFW firewall is active and protecting your system"
+        else
+            check_security "Firewall Status (UFW)" "FAIL" "UFW firewall is not active - your system is exposed to network attacks"
+        fi
+    elif command -v firewall-cmd >/dev/null 2>&1; then
+        if firewall-cmd --state 2>/dev/null | grep -q "running"; then
+            check_security "Firewall Status (firewalld)" "PASS" "Firewalld is active and protecting your system"
+        else
+            check_security "Firewall Status (firewalld)" "FAIL" "Firewalld is not active - your system is exposed to network attacks"
+        fi
+    elif command -v iptables >/dev/null 2>&1; then
+        if iptables -L | grep -q "Chain INPUT"; then
+            check_security "Firewall Status (iptables)" "PASS" "iptables rules are active and protecting your system"
+        else
+            check_security "Firewall Status (iptables)" "FAIL" "No active iptables rules found - your system may be exposed"
+        fi
+    elif command -v nft >/dev/null 2>&1; then
+        if nft list ruleset | grep -q "table"; then
+            check_security "Firewall Status (nftables)" "PASS" "nftables rules are active and protecting your system"
+        else
+            check_security "Firewall Status (nftables)" "FAIL" "No active nftables rules found - your system may be exposed"
+        fi
+    else
+        check_security "Firewall Status" "FAIL" "No recognized firewall tool is installed on this system"
+    fi
+}
+
+# Function to check and report with three states
+check_security() {
+    local test_name="$1"
+    local status="$2"
+    local message="$3"
+    
+    case $status in
+        "PASS")
+            echo -e "${GREEN}[PASS]${NC} $test_name ${GRAY}- $message${NC}"
+            echo "[PASS] $test_name - $message" >> "$REPORT_FILE"
+            ;;
+        "WARN")
+            echo -e "${YELLOW}[WARN]${NC} $test_name ${GRAY}- $message${NC}"
+            echo "[WARN] $test_name - $message" >> "$REPORT_FILE"
+            ;;
+        "FAIL")
+            echo -e "${RED}[FAIL]${NC} $test_name ${GRAY}- $message${NC}"
+            echo "[FAIL] $test_name - $message" >> "$REPORT_FILE"
+            ;;
+    esac
+    echo "" >> "$REPORT_FILE"
+}
+
+# Firewall check
+check_firewall_status
 
 # Check for unattended upgrades
 if dpkg -l | grep -q "unattended-upgrades"; then
