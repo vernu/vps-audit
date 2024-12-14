@@ -5,11 +5,70 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 GRAY='\033[0;90m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 # Get current timestamp for the report filename
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 REPORT_FILE="vps-audit-report-${TIMESTAMP}.txt"
+
+print_header() {
+    local header="$1"
+    echo -e "\n${BLUE}${BOLD}$header${NC}"
+    echo -e "\n$header" >> "$REPORT_FILE"
+    echo "================================" >> "$REPORT_FILE"
+}
+
+print_info() {
+    local label="$1"
+    local value="$2"
+    echo -e "${BOLD}$label:${NC} $value"
+    echo "$label: $value" >> "$REPORT_FILE"
+}
+
+# Start the audit
+echo -e "${BLUE}${BOLD}VPS Security Audit Tool${NC}"
+echo -e "${GRAY}https://github.com/vernu/vps-audit${NC}"
+echo -e "${GRAY}Starting audit at $(date)${NC}\n"
+
+echo "VPS Security Audit Tool" > "$REPORT_FILE"
+echo "https://github.com/vernu/vps-audit" >> "$REPORT_FILE"
+echo "Starting audit at $(date)" >> "$REPORT_FILE"
+echo "================================" >> "$REPORT_FILE"
+
+# System Information Section
+print_header "System Information"
+
+# Get system information
+OS_INFO=$(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)
+KERNEL_VERSION=$(uname -r)
+HOSTNAME=$(hostname)
+UPTIME=$(uptime -p)
+UPTIME_SINCE=$(uptime -s)
+CPU_INFO=$(lscpu | grep "Model name" | cut -d':' -f2 | xargs)
+CPU_CORES=$(nproc)
+TOTAL_MEM=$(free -h | awk '/^Mem:/ {print $2}')
+TOTAL_DISK=$(df -h / | awk 'NR==2 {print $2}')
+PUBLIC_IP=$(curl -s https://api.ipify.org)
+LOAD_AVERAGE=$(uptime | awk -F'load average:' '{print $2}' | xargs)
+
+# Print system information
+print_info "Hostname" "$HOSTNAME"
+print_info "Operating System" "$OS_INFO"
+print_info "Kernel Version" "$KERNEL_VERSION"
+print_info "Uptime" "$UPTIME (since $UPTIME_SINCE)"
+print_info "CPU Model" "$CPU_INFO"
+print_info "CPU Cores" "$CPU_CORES"
+print_info "Total Memory" "$TOTAL_MEM"
+print_info "Total Disk Space" "$TOTAL_DISK"
+print_info "Public IP" "$PUBLIC_IP"
+print_info "Load Average" "$LOAD_AVERAGE"
+
+echo "" >> "$REPORT_FILE"
+
+# Security Audit Section
+print_header "Security Audit Results"
 
 # Function to check and report with three states
 check_security() {
@@ -34,10 +93,6 @@ check_security() {
     echo "" >> "$REPORT_FILE"
 }
 
-echo "Starting VPS audit..."
-echo "VPS Audit Report - $(date)" > "$REPORT_FILE"
-echo "================================" >> "$REPORT_FILE"
-echo "" >> "$REPORT_FILE"
 
 # Check system uptime
 UPTIME=$(uptime -p)
