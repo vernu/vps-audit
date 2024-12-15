@@ -110,22 +110,45 @@ else
     check_security "System Restart" "PASS" "No restart required"
 fi
 
-# Check SSH root login
-if grep -q "^PermitRootLogin.*no" /etc/ssh/sshd_config; then
+# Check SSH config overrides
+SSH_CONFIG_OVERRIDES=$(grep "^Include" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}')
+
+# Check SSH root login (handle both main config and overrides if they exist)
+if [ -n "$SSH_CONFIG_OVERRIDES" ] && [ -d "$(dirname "$SSH_CONFIG_OVERRIDES")" ]; then
+    SSH_ROOT=$(grep "^PermitRootLogin" $SSH_CONFIG_OVERRIDES /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+else
+    SSH_ROOT=$(grep "^PermitRootLogin" /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+fi
+if [ -z "$SSH_ROOT" ]; then
+    SSH_ROOT="prohibit-password"
+fi
+if [ "$SSH_ROOT" = "no" ]; then
     check_security "SSH Root Login" "PASS" "Root login is properly disabled in SSH configuration"
 else
     check_security "SSH Root Login" "FAIL" "Root login is currently allowed - this is a security risk. Disable it in /etc/ssh/sshd_config"
 fi
 
-# Check SSH password authentication
-if grep -q "^PasswordAuthentication.*no" /etc/ssh/sshd_config; then
+# Check SSH password authentication (handle both main config and overrides if they exist)
+if [ -n "$SSH_CONFIG_OVERRIDES" ] && [ -d "$(dirname "$SSH_CONFIG_OVERRIDES")" ]; then
+    SSH_PASSWORD=$(grep "^PasswordAuthentication" $SSH_CONFIG_OVERRIDES /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+else
+    SSH_PASSWORD=$(grep "^PasswordAuthentication" /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+fi
+if [ -z "$SSH_PASSWORD" ]; then
+    SSH_PASSWORD="yes"
+fi
+if [ "$SSH_PASSWORD" = "no" ]; then
     check_security "SSH Password Auth" "PASS" "Password authentication is disabled, key-based auth only"
 else
     check_security "SSH Password Auth" "FAIL" "Password authentication is enabled - consider using key-based authentication only"
 fi
 
 # Check SSH default port
-SSH_PORT=$(grep "^Port" /etc/ssh/sshd_config | awk '{print $2}')
+if [ -n "$SSH_CONFIG_OVERRIDES" ] && [ -d "$(dirname "$SSH_CONFIG_OVERRIDES")" ]; then
+    SSH_PORT=$(grep "^Port" $SSH_CONFIG_OVERRIDES /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+else
+    SSH_PORT=$(grep "^Port" /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+fi
 if [ -z "$SSH_PORT" ]; then
     SSH_PORT="22"
 fi
