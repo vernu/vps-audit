@@ -200,9 +200,9 @@ fi
 
 # Process LISTENING_PORTS to extract unique public ports
 if [ -n "$LISTENING_PORTS" ]; then
-    PUBLIC_PORTS=$(echo "$LISTENING_PORTS" | awk -F':' '{print $NF}' | sort -n | uniq)
-    PORT_COUNT=$(echo "$PUBLIC_PORTS" | wc -w)
-    INTERNET_PORTS=$(echo "$PUBLIC_PORTS" | wc -w)
+    PUBLIC_PORTS=$(echo "$LISTENING_PORTS" | awk -F':' '{print $NF}' | sort -n | uniq | tr '\n' ',' | sed 's/,$//')
+    PORT_COUNT=$(echo "$PUBLIC_PORTS" | tr ',' '\n' | wc -w)
+    INTERNET_PORTS=$(echo "$PUBLIC_PORTS" | tr ',' '\n' | wc -w)
 
     if [ "$PORT_COUNT" -lt 10 ] && [ "$INTERNET_PORTS" -lt 3 ]; then
         check_security "Port Security" "PASS" "Good configuration (Total: $PORT_COUNT, Public: $INTERNET_PORTS accessible ports): $PUBLIC_PORTS"
