@@ -93,7 +93,6 @@ check_security() {
     echo "" >> "$REPORT_FILE"
 }
 
-
 # Check system uptime
 UPTIME=$(uptime -p)
 UPTIME_SINCE=$(uptime -s)
@@ -144,6 +143,8 @@ else
 fi
 
 # Check SSH default port
+UNPRIVILEGED_PORT_START=$(sysctl -n net.ipv4.ip_unprivileged_port_start)
+SSH_PORT=$(grep "^Port" /etc/ssh/sshd_config | awk '{print $2}')
 if [ -n "$SSH_CONFIG_OVERRIDES" ] && [ -d "$(dirname "$SSH_CONFIG_OVERRIDES")" ]; then
     SSH_PORT=$(grep "^Port" $SSH_CONFIG_OVERRIDES /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
 else
@@ -154,6 +155,8 @@ if [ -z "$SSH_PORT" ]; then
 fi
 if [ "$SSH_PORT" = "22" ]; then
     check_security "SSH Port" "WARN" "Using default port 22 - consider changing to a non-standard port for security by obscurity"
+elif [ "$SSH_PORT" -ge "$UNPRIVILEGED_PORT_START" ]; then
+    check_security "SSH Port" "FAIL" "Using unprivileged port $SSH_PORT -  use a port below $UNPRIVILEGED_PORT_START for better security"
 else
     check_security "SSH Port" "PASS" "Using non-default port $SSH_PORT which helps prevent automated attacks"
 fi
