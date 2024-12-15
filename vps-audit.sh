@@ -144,7 +144,7 @@ fi
 
 # Check SSH default port
 UNPRIVILEGED_PORT_START=$(sysctl -n net.ipv4.ip_unprivileged_port_start)
-SSH_PORT=$(grep "^Port" /etc/ssh/sshd_config | awk '{print $2}')
+SSH_PORT=""
 if [ -n "$SSH_CONFIG_OVERRIDES" ] && [ -d "$(dirname "$SSH_CONFIG_OVERRIDES")" ]; then
     SSH_PORT=$(grep "^Port" $SSH_CONFIG_OVERRIDES /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
 else
