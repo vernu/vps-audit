@@ -192,29 +192,6 @@ check_firewall_status() {
     fi
 }
 
-# Function to check and report with three states
-check_security() {
-    local test_name="$1"
-    local status="$2"
-    local message="$3"
-    
-    case $status in
-        "PASS")
-            echo -e "${GREEN}[PASS]${NC} $test_name ${GRAY}- $message${NC}"
-            echo "[PASS] $test_name - $message" >> "$REPORT_FILE"
-            ;;
-        "WARN")
-            echo -e "${YELLOW}[WARN]${NC} $test_name ${GRAY}- $message${NC}"
-            echo "[WARN] $test_name - $message" >> "$REPORT_FILE"
-            ;;
-        "FAIL")
-            echo -e "${RED}[FAIL]${NC} $test_name ${GRAY}- $message${NC}"
-            echo "[FAIL] $test_name - $message" >> "$REPORT_FILE"
-            ;;
-    esac
-    echo "" >> "$REPORT_FILE"
-}
-
 # Firewall check
 check_firewall_status
 
