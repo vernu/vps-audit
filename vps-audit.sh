@@ -332,11 +332,18 @@ else
 fi
 
 # Check for suspicious SUID files
-SUID_FILES=$(find / -type f -perm -4000 2>/dev/null | grep -v -e '^/usr/bin' -e '^/bin' -e '^/sbin' | wc -l)
+COMMON_SUID_PATHS='^/usr/bin/|^/bin/|^/sbin/|^/usr/sbin/|^/usr/lib|^/usr/libexec'
+KNOWN_SUID_BINS='ping$|sudo$|mount$|umount$|su$|passwd$|chsh$|newgrp$|gpasswd$|chfn$'
+
+SUID_FILES=$(find / -type f -perm -4000 2>/dev/null | \
+    grep -v -E "$COMMON_SUID_PATHS" | \
+    grep -v -E "$KNOWN_SUID_BINS" | \
+    wc -l)
+
 if [ "$SUID_FILES" -eq 0 ]; then
     check_security "SUID Files" "PASS" "No suspicious SUID files found - good security practice"
 else
-    check_security "SUID Files" "FAIL" "Found $SUID_FILES suspicious SUID files - potential privilege escalation risk"
+    check_security "SUID Files" "WARN" "Found $SUID_FILES SUID files outside standard locations - verify if legitimate"
 fi
 
 # Add system information summary to report
