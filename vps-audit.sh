@@ -93,7 +93,6 @@ check_security() {
     echo "" >> "$REPORT_FILE"
 }
 
-
 # Check system uptime
 UPTIME=$(uptime -p)
 UPTIME_SINCE=$(uptime -s)
@@ -110,23 +109,51 @@ else
     check_security "System Restart" "PASS" "No restart required"
 fi
 
-# Check SSH root login
-if grep -q "^PermitRootLogin.*no" /etc/ssh/sshd_config; then
+# Check SSH config overrides
+SSH_CONFIG_OVERRIDES=$(grep "^Include" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}')
+
+# Check SSH root login (handle both main config and overrides if they exist)
+if [ -n "$SSH_CONFIG_OVERRIDES" ] && [ -d "$(dirname "$SSH_CONFIG_OVERRIDES")" ]; then
+    SSH_ROOT=$(grep "^PermitRootLogin" $SSH_CONFIG_OVERRIDES /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+else
+    SSH_ROOT=$(grep "^PermitRootLogin" /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+fi
+if [ -z "$SSH_ROOT" ]; then
+    SSH_ROOT="prohibit-password"
+fi
+if [ "$SSH_ROOT" = "no" ]; then
     check_security "SSH Root Login" "PASS" "Root login is properly disabled in SSH configuration"
 else
     check_security "SSH Root Login" "FAIL" "Root login is currently allowed - this is a security risk. Disable it in /etc/ssh/sshd_config"
 fi
 
-# Check SSH password authentication
-if grep -q "^PasswordAuthentication.*no" /etc/ssh/sshd_config; then
+# Check SSH password authentication (handle both main config and overrides if they exist)
+if [ -n "$SSH_CONFIG_OVERRIDES" ] && [ -d "$(dirname "$SSH_CONFIG_OVERRIDES")" ]; then
+    SSH_PASSWORD=$(grep "^PasswordAuthentication" $SSH_CONFIG_OVERRIDES /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+else
+    SSH_PASSWORD=$(grep "^PasswordAuthentication" /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+fi
+if [ -z "$SSH_PASSWORD" ]; then
+    SSH_PASSWORD="yes"
+fi
+if [ "$SSH_PASSWORD" = "no" ]; then
     check_security "SSH Password Auth" "PASS" "Password authentication is disabled, key-based auth only"
 else
     check_security "SSH Password Auth" "FAIL" "Password authentication is enabled - consider using key-based authentication only"
 fi
 
-# Check for unsecure SSH ports 
+
+# Check for default/unsecure SSH ports 
 UNPRIVILEGED_PORT_START=$(sysctl -n net.ipv4.ip_unprivileged_port_start)
-SSH_PORT=$(grep "^Port" /etc/ssh/sshd_config | awk '{print $2}')
+SSH_PORT=""
+if [ -n "$SSH_CONFIG_OVERRIDES" ] && [ -d "$(dirname "$SSH_CONFIG_OVERRIDES")" ]; then
+    SSH_PORT=$(grep "^Port" $SSH_CONFIG_OVERRIDES /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+else
+    SSH_PORT=$(grep "^Port" /etc/ssh/sshd_config 2>/dev/null | head -1 | awk '{print $2}')
+fi
+if [ -z "$SSH_PORT" ]; then
+    SSH_PORT="22"
+fi
 
 if [ "$SSH_PORT" = "22" ]; then
     check_security "SSH Port" "WARN" "Using default port 22 - consider changing to a non-standard port for security by obscurity"
@@ -136,12 +163,39 @@ else
     check_security "SSH Port" "PASS" "Using non-default port $SSH_PORT which helps prevent automated attacks"
 fi
 
-# Check UFW status
-if ufw status | grep -q "active"; then
-    check_security "Firewall Status" "PASS" "UFW firewall is active and protecting your system"
-else
-    check_security "Firewall Status" "FAIL" "UFW firewall is not active - your system is exposed to network attacks"
-fi
+# Check Firewall Status
+check_firewall_status() {
+    if command -v ufw >/dev/null 2>&1; then
+        if ufw status | grep -q "active"; then
+            check_security "Firewall Status (UFW)" "PASS" "UFW firewall is active and protecting your system"
+        else
+            check_security "Firewall Status (UFW)" "FAIL" "UFW firewall is not active - your system is exposed to network attacks"
+        fi
+    elif command -v firewall-cmd >/dev/null 2>&1; then
+        if firewall-cmd --state 2>/dev/null | grep -q "running"; then
+            check_security "Firewall Status (firewalld)" "PASS" "Firewalld is active and protecting your system"
+        else
+            check_security "Firewall Status (firewalld)" "FAIL" "Firewalld is not active - your system is exposed to network attacks"
+        fi
+    elif command -v iptables >/dev/null 2>&1; then
+        if iptables -L | grep -q "Chain INPUT"; then
+            check_security "Firewall Status (iptables)" "PASS" "iptables rules are active and protecting your system"
+        else
+            check_security "Firewall Status (iptables)" "FAIL" "No active iptables rules found - your system may be exposed"
+        fi
+    elif command -v nft >/dev/null 2>&1; then
+        if nft list ruleset | grep -q "table"; then
+            check_security "Firewall Status (nftables)" "PASS" "nftables rules are active and protecting your system"
+        else
+            check_security "Firewall Status (nftables)" "FAIL" "No active nftables rules found - your system may be exposed"
+        fi
+    else
+        check_security "Firewall Status" "FAIL" "No recognized firewall tool is installed on this system"
+    fi
+}
+
+# Firewall check
+check_firewall_status
 
 # Check for unattended upgrades
 if dpkg -l | grep -q "unattended-upgrades"; then
@@ -200,42 +254,38 @@ else
     check_security "Running Services" "FAIL" "Too many services running ($SERVICES) - increases attack surface"
 fi
 
-# Check ports
-LISTENING_PORTS=$(netstat -tuln | grep LISTEN)
-PORT_COUNT=$(echo "$LISTENING_PORTS" | wc -l)
+# Check ports using netstat or ss
+if command -v netstat >/dev/null 2>&1; then
+    LISTENING_PORTS=$(netstat -tuln | grep LISTEN | awk '{print $4}')
+elif command -v ss >/dev/null 2>&1; then
+    LISTENING_PORTS=$(ss -tuln | grep LISTEN | awk '{print $5}')
+else
+    check_security "Port Scanning" "FAIL" "Neither 'netstat' nor 'ss' is available on this system."
+    LISTENING_PORTS=""
+fi
 
-# Get list of internet-accessible ports, excluding those explicitly denied by UFW
-PUBLIC_PORTS=$(netstat -tuln | grep LISTEN | \
-    awk '$4 !~ /127.0.0.1|::1/ && ($4 ~ /0.0.0.0/ || $4 ~ /::/)' | \
-    awk '{split($4, a, ":"); print a[length(a)]}' | sort -n | while read port; do
-        # Skip ports that are explicitly denied in UFW
-        if ! ufw status | grep -q "^$port.*DENY"; then
-            echo "$port"
-        fi
-    done | tr '\n' ',' | sed 's/,$//')
+# Process LISTENING_PORTS to extract unique public ports
+if [ -n "$LISTENING_PORTS" ]; then
+    PUBLIC_PORTS=$(echo "$LISTENING_PORTS" | awk -F':' '{print $NF}' | sort -n | uniq | tr '\n' ',' | sed 's/,$//')
+    PORT_COUNT=$(echo "$PUBLIC_PORTS" | tr ',' '\n' | wc -w)
+    INTERNET_PORTS=$(echo "$PUBLIC_PORTS" | tr ',' '\n' | wc -w)
 
-INTERNET_PORTS=$(echo "$PUBLIC_PORTS" | tr ',' '\n' | wc -l)
+    if [ "$PORT_COUNT" -lt 10 ] && [ "$INTERNET_PORTS" -lt 3 ]; then
+        check_security "Port Security" "PASS" "Good configuration (Total: $PORT_COUNT, Public: $INTERNET_PORTS accessible ports): $PUBLIC_PORTS"
+    elif [ "$PORT_COUNT" -lt 20 ] && [ "$INTERNET_PORTS" -lt 5 ]; then
+        check_security "Port Security" "WARN" "Review recommended (Total: $PORT_COUNT, Public: $INTERNET_PORTS accessible ports): $PUBLIC_PORTS"
+    else
+        check_security "Port Security" "FAIL" "High exposure (Total: $PORT_COUNT, Public: $INTERNET_PORTS accessible ports): $PUBLIC_PORTS"
+    fi
+else
+    check_security "Port Scanning" "WARN" "Port scanning failed due to missing tools. Ensure 'ss' or 'netstat' is installed."
+fi
 
 # Function to format the message with proper indentation for the report file
 format_for_report() {
     local message="$1"
     echo "$message" >> "$REPORT_FILE"
 }
-
-# Evaluate security based on both total ports and internet-accessible ports
-if [ "$PORT_COUNT" -lt 10 ] && [ "$INTERNET_PORTS" -lt 3 ]; then
-    RESULT="${GREEN}[PASS]${NC} Port Security ${GRAY}- Good configuration (Total: $PORT_COUNT, Public: $INTERNET_PORTS accessible ports): $PUBLIC_PORTS${NC}"
-    echo -e "$RESULT"
-    format_for_report "[PASS] Port Security - Good configuration (Total: $PORT_COUNT, Public: $INTERNET_PORTS accessible ports): $PUBLIC_PORTS"
-elif [ "$PORT_COUNT" -lt 20 ] && [ "$INTERNET_PORTS" -lt 5 ]; then
-    RESULT="${YELLOW}[WARN]${NC} Port Security ${GRAY}- Review recommended (Total: $PORT_COUNT, Public: $INTERNET_PORTS accessible ports): $PUBLIC_PORTS${NC}"
-    echo -e "$RESULT"
-    format_for_report "[WARN] Port Security - Review recommended (Total: $PORT_COUNT, Public: $INTERNET_PORTS accessible ports): $PUBLIC_PORTS"
-else
-    RESULT="${RED}[FAIL]${NC} Port Security ${GRAY}- High exposure (Total: $PORT_COUNT, Public: $INTERNET_PORTS accessible ports): $PUBLIC_PORTS${NC}"
-    echo -e "$RESULT"
-    format_for_report "[FAIL] Port Security - High exposure (Total: $PORT_COUNT, Public: $INTERNET_PORTS accessible ports): $PUBLIC_PORTS"
-fi
 
 # Check disk space usage
 DISK_TOTAL=$(df -h / | awk 'NR==2 {print $2}')
@@ -295,11 +345,18 @@ else
 fi
 
 # Check for suspicious SUID files
-SUID_FILES=$(find / -type f -perm -4000 2>/dev/null | grep -v -e '^/usr/bin' -e '^/bin' -e '^/sbin' | wc -l)
+COMMON_SUID_PATHS='^/usr/bin/|^/bin/|^/sbin/|^/usr/sbin/|^/usr/lib|^/usr/libexec'
+KNOWN_SUID_BINS='ping$|sudo$|mount$|umount$|su$|passwd$|chsh$|newgrp$|gpasswd$|chfn$'
+
+SUID_FILES=$(find / -type f -perm -4000 2>/dev/null | \
+    grep -v -E "$COMMON_SUID_PATHS" | \
+    grep -v -E "$KNOWN_SUID_BINS" | \
+    wc -l)
+
 if [ "$SUID_FILES" -eq 0 ]; then
     check_security "SUID Files" "PASS" "No suspicious SUID files found - good security practice"
 else
-    check_security "SUID Files" "FAIL" "Found $SUID_FILES suspicious SUID files - potential privilege escalation risk"
+    check_security "SUID Files" "WARN" "Found $SUID_FILES SUID files outside standard locations - verify if legitimate"
 fi
 
 # Add system information summary to report
