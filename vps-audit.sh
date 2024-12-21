@@ -142,7 +142,8 @@ else
     check_security "SSH Password Auth" "FAIL" "Password authentication is enabled - consider using key-based authentication only"
 fi
 
-# Check SSH default port
+
+# Check for default/unsecure SSH ports 
 UNPRIVILEGED_PORT_START=$(sysctl -n net.ipv4.ip_unprivileged_port_start)
 SSH_PORT=""
 if [ -n "$SSH_CONFIG_OVERRIDES" ] && [ -d "$(dirname "$SSH_CONFIG_OVERRIDES")" ]; then
@@ -153,6 +154,7 @@ fi
 if [ -z "$SSH_PORT" ]; then
     SSH_PORT="22"
 fi
+
 if [ "$SSH_PORT" = "22" ]; then
     check_security "SSH Port" "WARN" "Using default port 22 - consider changing to a non-standard port for security by obscurity"
 elif [ "$SSH_PORT" -ge "$UNPRIVILEGED_PORT_START" ]; then
@@ -202,16 +204,25 @@ else
     check_security "Unattended Upgrades" "FAIL" "Automatic security updates are not configured - system may miss critical updates"
 fi
 
-# Check fail2ban
+# Check Intrusion Prevention Systems (Fail2ban or CrowdSec)
+IPS_INSTALLED=0
+IPS_ACTIVE=0
+
 if dpkg -l | grep -q "fail2ban"; then
-    if systemctl is-active fail2ban >/dev/null 2>&1; then
-        check_security "Fail2ban" "PASS" "Brute force protection is active and running"
-    else
-        check_security "Fail2ban" "WARN" "Fail2ban is installed but not running - brute force protection is disabled"
-    fi
-else
-    check_security "Fail2ban" "FAIL" "No brute force protection installed - system is vulnerable to login attacks"
+    IPS_INSTALLED=1
+    systemctl is-active fail2ban >/dev/null 2>&1 && IPS_ACTIVE=1
 fi
+
+if dpkg -l | grep -q "crowdsec"; then
+    IPS_INSTALLED=1
+    systemctl is-active crowdsec >/dev/null 2>&1 && IPS_ACTIVE=1
+fi
+
+case "$IPS_INSTALLED$IPS_ACTIVE" in
+    "11") check_security "Intrusion Prevention" "PASS" "Fail2ban or CrowdSec is installed and running" ;;
+    "10") check_security "Intrusion Prevention" "WARN" "Fail2ban or CrowdSec is installed but not running" ;;
+    *)    check_security "Intrusion Prevention" "FAIL" "No intrusion prevention system (Fail2ban or CrowdSec) is installed" ;;
+esac
 
 # Check failed login attempts
 FAILED_LOGINS=$(grep "Failed password" /var/log/auth.log 2>/dev/null | wc -l)
@@ -225,12 +236,14 @@ fi
 
 # Check system updates
 UPDATES=$(apt-get -s upgrade 2>/dev/null | grep -P '^\d+ upgraded' | cut -d" " -f1)
+if [ -z "$UPDATES" ]; then
+    UPDATES=0
+fi
 if [ "$UPDATES" -eq 0 ]; then
     check_security "System Updates" "PASS" "All system packages are up to date"
 else
     check_security "System Updates" "FAIL" "$UPDATES security updates available - system is vulnerable to known exploits"
 fi
-
 # Check running services
 SERVICES=$(systemctl list-units --type=service --state=running | grep "loaded active running" | wc -l)
 if [ "$SERVICES" -lt 20 ]; then
