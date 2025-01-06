@@ -41,7 +41,7 @@ echo "================================" >> "$REPORT_FILE"
 print_header "System Information"
 
 # Get system information
-OS_INFO=$(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)
+OS_INFO=$(grep PRETTY_NAME /etc/os-release | cut -d'"' -f2)
 KERNEL_VERSION=$(uname -r)
 HOSTNAME=$HOSTNAME
 UPTIME=$(uptime -p)
@@ -225,7 +225,7 @@ case "$IPS_INSTALLED$IPS_ACTIVE" in
 esac
 
 # Check failed login attempts
-FAILED_LOGINS=$(grep "Failed password" /var/log/auth.log 2>/dev/null | wc -l)
+FAILED_LOGINS=$(grep -c "Failed password" /var/log/auth.log 2>/dev/null || echo 0)
 if [ "$FAILED_LOGINS" -lt 10 ]; then
     check_security "Failed Logins" "PASS" "Only $FAILED_LOGINS failed login attempts detected - this is within normal range"
 elif [ "$FAILED_LOGINS" -lt 50 ]; then
@@ -245,7 +245,7 @@ else
     check_security "System Updates" "FAIL" "$UPDATES security updates available - system is vulnerable to known exploits"
 fi
 # Check running services
-SERVICES=$(systemctl list-units --type=service --state=running | grep "loaded active running" | wc -l)
+SERVICES=$(systemctl list-units --type=service --state=running | grep -c "loaded active running")
 if [ "$SERVICES" -lt 20 ]; then
     check_security "Running Services" "PASS" "Running minimal services ($SERVICES) - good for security"
 elif [ "$SERVICES" -lt 40 ]; then
@@ -364,7 +364,7 @@ echo "================================" >> "$REPORT_FILE"
 echo "System Information Summary:" >> "$REPORT_FILE"
 echo "Hostname: $(hostname)" >> "$REPORT_FILE"
 echo "Kernel: $(uname -r)" >> "$REPORT_FILE"
-echo "OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)" >> "$REPORT_FILE"
+echo "OS: $(grep PRETTY_NAME /etc/os-release | cut -d'"' -f2)" >> "$REPORT_FILE"
 echo "CPU Cores: $(nproc)" >> "$REPORT_FILE"
 echo "Total Memory: $(free -h | awk '/^Mem:/ {print $2}')" >> "$REPORT_FILE"
 echo "Total Disk Space: $(df -h / | awk 'NR==2 {print $2}')" >> "$REPORT_FILE"
