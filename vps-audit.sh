@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -43,7 +43,7 @@ print_header "System Information"
 # Get system information
 OS_INFO=$(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)
 KERNEL_VERSION=$(uname -r)
-HOSTNAME=$(hostname)
+HOSTNAME=$HOSTNAME
 UPTIME=$(uptime -p)
 UPTIME_SINCE=$(uptime -s)
 CPU_INFO=$(lscpu | grep "Model name" | cut -d':' -f2 | xargs)
