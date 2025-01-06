@@ -166,7 +166,7 @@ fi
 # Check Firewall Status
 check_firewall_status() {
     if command -v ufw >/dev/null 2>&1; then
-        if ufw status | grep -q "active"; then
+        if ufw status | grep -qw "active"; then
             check_security "Firewall Status (UFW)" "PASS" "UFW firewall is active and protecting your system"
         else
             check_security "Firewall Status (UFW)" "FAIL" "UFW firewall is not active - your system is exposed to network attacks"
