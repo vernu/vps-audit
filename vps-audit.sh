@@ -225,7 +225,20 @@ case "$IPS_INSTALLED$IPS_ACTIVE" in
 esac
 
 # Check failed login attempts
-FAILED_LOGINS=$(grep -c "Failed password" /var/log/auth.log 2>/dev/null || echo 0)
+LOG_FILE="/var/log/auth.log"
+
+if [ -f "$LOG_FILE" ]; then
+    FAILED_LOGINS=$(grep -c "Failed password" "$LOG_FILE" 2>/dev/null || echo 0)
+else
+    FAILED_LOGINS=0
+    echo "Warning: Log file $LOG_FILE not found or unreadable. Assuming 0 failed login attempts."
+fi
+
+# Ensure FAILED_LOGINS is numeric and strip whitespace
+FAILED_LOGINS=$(echo "$FAILED_LOGINS" | tr -d '[:space:]')
+# Remove leading zeros (if any)
+FAILED_LOGINS=$((10#$FAILED_LOGINS)) # Use arithmetic evaluation to ensure it's numeric and format correctly.
+
 if [ "$FAILED_LOGINS" -lt 10 ]; then
     check_security "Failed Logins" "PASS" "Only $FAILED_LOGINS failed login attempts detected - this is within normal range"
 elif [ "$FAILED_LOGINS" -lt 50 ]; then
