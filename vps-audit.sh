@@ -213,9 +213,21 @@ if dpkg -l | grep -q "fail2ban"; then
     systemctl is-active fail2ban >/dev/null 2>&1 && IPS_ACTIVE=1
 fi
 
+# Check docker container running fail2ban
+if docker ps -a | awk '{print $2}' | grep "fail2ban"; then
+    IPS_INSTALLED=1
+    docker ps | grep -q "fail2ban" && IPS_ACTIVE=1
+fi
+
 if dpkg -l | grep -q "crowdsec"; then
     IPS_INSTALLED=1
     systemctl is-active crowdsec >/dev/null 2>&1 && IPS_ACTIVE=1
+fi
+
+# Check docker container running crowdsec
+if docker ps -a | awk '{print $2}' | grep "crowdsec"; then
+    IPS_INSTALLED=1
+    docker ps | grep -q "crowdsec" && IPS_ACTIVE=1
 fi
 
 case "$IPS_INSTALLED$IPS_ACTIVE" in
