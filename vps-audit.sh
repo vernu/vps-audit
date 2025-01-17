@@ -178,7 +178,7 @@ check_firewall_status() {
             check_security "Firewall Status (firewalld)" "FAIL" "Firewalld is not active - your system is exposed to network attacks"
         fi
     elif command -v iptables >/dev/null 2>&1; then
-        if iptables -L | grep -q "Chain INPUT"; then
+        if iptables -L -n | grep -q "Chain INPUT"; then
             check_security "Firewall Status (iptables)" "PASS" "iptables rules are active and protecting your system"
         else
             check_security "Firewall Status (iptables)" "FAIL" "No active iptables rules found - your system may be exposed"
