@@ -213,9 +213,33 @@ if dpkg -l | grep -q "fail2ban"; then
     systemctl is-active fail2ban >/dev/null 2>&1 && IPS_ACTIVE=1
 fi
 
+# Check docker container running fail2ban
+if command -v docker >/dev/null 2>&1; then
+    if systemctl is-active --quiet docker; then
+        if docker ps -a | awk '{print $2}' | grep "fail2ban" >/dev/null 2>&1; then
+            IPS_INSTALLED=1
+            docker ps | grep -q "fail2ban" && IPS_ACTIVE=1
+        fi
+    else
+        check_security "Intrusion Prevention" "WARN" "Docker is instaleld but not running - cannot check for Fail2ban containers"
+    fi
+fi
+
 if dpkg -l | grep -q "crowdsec"; then
     IPS_INSTALLED=1
     systemctl is-active crowdsec >/dev/null 2>&1 && IPS_ACTIVE=1
+fi
+
+# Check docker container running crowdsec
+if command -v docker >/dev/null 2>&1; then
+    if systemctl is-active --quiet docker; then
+        if docker ps -a | awk '{print $2}' | grep "crowdsec" >/dev/null 2>&1; then
+            IPS_INSTALLED=1
+            docker ps | grep -q "crowdsec" && IPS_ACTIVE=1
+        fi
+    else
+        check_security "Intrusion Prevention" "WARN" "Docker is instaleld but not running - cannot check for CrowdSec containers"
+    fi
 fi
 
 case "$IPS_INSTALLED$IPS_ACTIVE" in
