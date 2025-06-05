@@ -142,7 +142,6 @@ else
     check_security "SSH Password Auth" "FAIL" "Password authentication is enabled - consider using key-based authentication only"
 fi
 
-
 # Check for default/unsecure SSH ports 
 UNPRIVILEGED_PORT_START=$(sysctl -n net.ipv4.ip_unprivileged_port_start)
 SSH_PORT=""
@@ -255,7 +254,7 @@ if [ -f "$LOG_FILE" ]; then
     FAILED_LOGINS=$(grep -c "Failed password" "$LOG_FILE" 2>/dev/null || echo 0)
 else
     FAILED_LOGINS=0
-    echo "Warning: Log file $LOG_FILE not found or unreadable. Assuming 0 failed login attempts."
+    check_security "Auth Log" "WARN" "Log file $LOG_FILE not found or unreadable. Assuming 0 failed login attempts."
 fi
 
 # Ensure FAILED_LOGINS is numeric and strip whitespace
@@ -281,6 +280,7 @@ if [ "$UPDATES" -eq 0 ]; then
 else
     check_security "System Updates" "FAIL" "$UPDATES security updates available - system is vulnerable to known exploits"
 fi
+
 # Check running services
 SERVICES=$(systemctl list-units --type=service --state=running | grep -c "loaded active running")
 if [ "$SERVICES" -lt 20 ]; then
