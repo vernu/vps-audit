@@ -156,7 +156,6 @@ else
     check_security "SSH Password Auth" "FAIL" "Password authentication is enabled - consider using key-based authentication only"
 fi
 
-
 # Check for default/unsecure SSH ports 
 UNPRIVILEGED_PORT_START=$(cat /proc/sys/net/ipv4/ip_unprivileged_port_start)
 SSH_PORT=$(sshd_config "Port")
@@ -224,7 +223,19 @@ dpkg-query -l fail2ban >/dev/null 2>&1 && {
     IPS_INSTALLED=1
     FAIL2BAN_INSTALLED=1
     systemctl is-active fail2ban >/dev/null 2>&1 && IPS_ACTIVE=1
-}
+fi
+
+# Check docker container running fail2ban
+if command -v docker >/dev/null 2>&1; then
+    if systemctl is-active --quiet docker; then
+        if docker ps -a | awk '{print $2}' | grep "fail2ban" >/dev/null 2>&1; then
+            IPS_INSTALLED=1
+            docker ps | grep -q "fail2ban" && IPS_ACTIVE=1
+        fi
+    else
+        check_security "Intrusion Prevention" "WARN" "Docker is installed but not running - cannot check for Fail2ban containers"
+    fi
+fi
 
 dpkg-query -l crowdsec >/dev/null 2>&1 && {
     IPS_INSTALLED=1
@@ -232,8 +243,16 @@ dpkg-query -l crowdsec >/dev/null 2>&1 && {
     systemctl is-active crowdsec >/dev/null 2>&1 && IPS_ACTIVE=1
 }
 
-if [ -z "$FAIL2BAN_INSTALLED" ] && [ -z "$CROWDSEC_INSTALLED" ]; then
-    check_security "Intrusion Prevention" "FAIL" "No intrusion prevention system (Fail2ban or CrowdSec) is installed"
+# Check docker container running crowdsec
+if command -v docker >/dev/null 2>&1; then
+    if systemctl is-active --quiet docker; then
+        if docker ps -a | awk '{print $2}' | grep "crowdsec" >/dev/null 2>&1; then
+            IPS_INSTALLED=1
+            docker ps | grep -q "crowdsec" && IPS_ACTIVE=1
+        fi
+    else
+        check_security "Intrusion Prevention" "WARN" "Docker is installed but not running - cannot check for CrowdSec containers"
+    fi
 fi
 
 case "$IPS_INSTALLED$IPS_ACTIVE" in
@@ -246,9 +265,16 @@ LOG_FILE="/var/log/auth.log"
 
 if [ -f "$LOG_FILE" ]; then
     FAILED_LOGINS=$(grep -c "Failed password" "$LOG_FILE" 2>/dev/null || echo 0)
+
+# if debian version > 10, info in journalctl
+elif [ -f "/etc/debian_version" ]; then
+    DEB_VERSION=$(cut -d'.' -f1 /etc/debian_version)
+    if [ "$DEB_VERSION" -gt 10 ]; then
+        FAILED_LOGINS=$(grep -c "Failed password" "journalctl -u ssh --since \"24 hours ago\"" 2>/dev/null || echo 0)
+    fi
 else
     FAILED_LOGINS=0
-    echo "Warning: Log file $LOG_FILE not found or unreadable. Assuming 0 failed login attempts."
+    check_security "Auth Log" "WARN" "Log file $LOG_FILE not found or unreadable. Assuming 0 failed login attempts."
 fi
 
 # Ensure FAILED_LOGINS is numeric and strip whitespace
