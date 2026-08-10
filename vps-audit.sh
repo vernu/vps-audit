@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+VPS_AUDIT_VERSION="0.1.0"
+
 # Colors for output
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -90,11 +92,11 @@ print_info() {
 }
 
 # Start the audit
-echo -e "${BLUE}${BOLD}VPS Security Audit Tool${NC}"
+echo -e "${BLUE}${BOLD}VPS Security Audit Tool v${VPS_AUDIT_VERSION}${NC}"
 echo -e "${GRAY}https://nuverlabs.com/vps-audit${NC}"
 echo -e "${GRAY}Starting audit at $(date)${NC}\n"
 
-echo "VPS Security Audit Tool" > "$REPORT_FILE"
+echo "VPS Security Audit Tool v${VPS_AUDIT_VERSION}" > "$REPORT_FILE"
 echo "https://nuverlabs.com/vps-audit" >> "$REPORT_FILE"
 echo "Starting audit at $(date)" >> "$REPORT_FILE"
 echo "================================" >> "$REPORT_FILE"
