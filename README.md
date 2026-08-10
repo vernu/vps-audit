@@ -61,7 +61,7 @@ curl -O https://raw.githubusercontent.com/vernu/vps-audit/main/vps-audit.sh
 chmod +x vps-audit.sh
 ```
 
------
+---
 
 ## Usage
 
@@ -98,7 +98,7 @@ The script provides two types of output:
    - System resource usage statistics
    - Timestamp of the audit
 
------
+---
 
 ## Customization
 
@@ -118,6 +118,7 @@ These variables define the numerical limits that trigger a **WARN** or **FAIL** 
 | `LOGINS_FAIL` | `50` | Failed Logins | **FAIL** if more than 50 failed login attempts are detected. |
 | `OPEN_PORTS_WARN` | `10` | Open Ports | **WARN** if between 10-20 listening ports are found. |
 | `OPEN_PORTS_FAIL` | `20` | Open Ports | **FAIL** if more than 20 listening ports are found. |
+| `PASSWORD_MINLEN` | `12` | Password Policy | **PASS** if `minlen` in `pwquality.conf` is at least this value. |
 
 ### 2. Report Output and Ownership
 
@@ -127,7 +128,7 @@ These variables control where the report is saved and the file permissions.
 | :--- | :--- | :--- |
 | `DEFAULT_REPORT_DIR` | `.` *(The current directory)* | The directory where the report file will be saved. |
 | `ENABLE_CHOWN` | `false` | If `true`, sets ownership of the report file and (if newly created) the report directory to `REPORT_CHOWN_OWNER`. |
-| `REPORT_CHOWN_OWNER` | `$(id -un):$(id -gn)` | The target `user:group` for `chown`. **Note:** When run via `sudo`, this will resolve to the `root` user by default. |
+| `REPORT_CHOWN_OWNER` | `${SUDO_USER:-$(id -un)}:<their group>` | The target `user:group` for `chown`. Defaults to the user who invoked `sudo`, so reports are not left owned by `root`. |
 | `REPORT_FILENAME` | `vps-audit-report-$(TIMESTAMP).txt` | The template name for the generated report file. |
 
 ### 3. Security Check File Paths

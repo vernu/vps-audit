@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 
+# Colors for output
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GRAY='\033[0;90m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
 # -----------------------------------------
 # Configuration
 # -----------------------------------------
@@ -28,6 +37,9 @@ LOGINS_FAIL=50    # FAIL if >= 50 failed logins
 OPEN_PORTS_WARN=10  # WARN if >= 10 open ports
 OPEN_PORTS_FAIL=20  # FAIL if >= 20 open ports
 
+# Password Policy
+PASSWORD_MINLEN=12  # PASS if pwquality minlen is >= this value
+
 # Report Output Configuration
 
 # Directory and File Naming
@@ -37,20 +49,22 @@ REPORT_FILENAME="vps-audit-report-${TIMESTAMP}.txt"
 REPORT_FILE="${DEFAULT_REPORT_DIR}/${REPORT_FILENAME}"
 
 # Ownership
-ENABLE_CHOWN=false  # Whether to apply chown to report directory
-REPORT_CHOWN_OWNER="$(id -un):$(id -gn)"  # user:group - if running via sudo will default to root:root
+ENABLE_CHOWN=false  # Whether to chown the report (and the report dir, if created)
+# Defaults to the user who invoked sudo, so reports are not left owned by root.
+CHOWN_USER="${SUDO_USER:-$(id -un)}"
+REPORT_CHOWN_OWNER="${CHOWN_USER}:$(id -gn "$CHOWN_USER" 2>/dev/null || id -gn)"
 
 # Ensure report directory exists
 if [ ! -d "$DEFAULT_REPORT_DIR" ]; then
     if mkdir -p "$DEFAULT_REPORT_DIR"; then
         # Apply ownership only when directory was created
         if [ "$ENABLE_CHOWN" = true ]; then
-            if ! chown -R "$REPORT_CHOWN_OWNER" "$DEFAULT_REPORT_DIR"; then
-                echo -e "${RED}[ERROR] Failed to change ownership of ${DEFAULT_REPORT_DIR}." >&2
+            if ! chown "$REPORT_CHOWN_OWNER" "$DEFAULT_REPORT_DIR"; then
+                echo -e "${RED}[ERROR] Failed to change ownership of ${DEFAULT_REPORT_DIR}.${NC}" >&2
             fi
         fi
     else
-        echo -e "${RED}[ERROR] Failed to create directory ${DEFAULT_REPORT_DIR}. Using current directory." >&2
+        echo -e "${RED}[ERROR] Failed to create directory ${DEFAULT_REPORT_DIR}. Using current directory.${NC}" >&2
         DEFAULT_REPORT_DIR="."
         REPORT_FILE="./${REPORT_FILENAME}"
         ENABLE_CHOWN=false
@@ -60,16 +74,6 @@ fi
 # -----------------------------------------
 # End Configuration
 # -----------------------------------------
-
-
-# Colors for output
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GRAY='\033[0;90m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
 
 print_header() {
     local header="$1"
@@ -438,12 +442,16 @@ fi
 
 # Check password policy
 if [ -f "$PASSWORD_QUALITY_CONF" ]; then
-    # Extract the minlen value from pwquality.conf
-    MINLEN_VALUE=$(grep -E '^\s*minlen\s*=' "$PASSWORD_QUALITY_CONF" | awk -F= '{print $2}' | tr -d ' ')
-    if [ "$MINLEN_VALUE" -ge 12 ]; then
-        check_security "Password Policy" "PASS" "Strong password policy is enforced"
+    # Extract the minlen value from pwquality.conf (last uncommented definition wins)
+    MINLEN_VALUE=$(grep -E '^[[:space:]]*minlen[[:space:]]*=' "$PASSWORD_QUALITY_CONF" | tail -1 | cut -d= -f2 | tr -d '[:space:]')
+    if [ -z "$MINLEN_VALUE" ]; then
+        check_security "Password Policy" "FAIL" "No minlen set in $PASSWORD_QUALITY_CONF - system accepts weak passwords"
+    elif ! [[ "$MINLEN_VALUE" =~ ^[0-9]+$ ]]; then
+        check_security "Password Policy" "WARN" "Could not parse minlen value '$MINLEN_VALUE' in $PASSWORD_QUALITY_CONF"
+    elif [ "$MINLEN_VALUE" -ge "$PASSWORD_MINLEN" ]; then
+        check_security "Password Policy" "PASS" "Strong password policy is enforced (minlen=$MINLEN_VALUE)"
     else
-        check_security "Password Policy" "FAIL" "Weak password policy - passwords may be too simple"
+        check_security "Password Policy" "FAIL" "Weak password policy - minlen=$MINLEN_VALUE is below the recommended $PASSWORD_MINLEN"
     fi
 else
     check_security "Password Policy" "FAIL" "No password policy configured - system accepts weak passwords"
@@ -476,7 +484,7 @@ echo "Total Disk Space: $(df -h / | awk 'NR==2 {print $2}')" >> "$REPORT_FILE"
 echo "================================" >> "$REPORT_FILE"
 
 echo -e "\nVPS audit complete. Full report saved to $REPORT_FILE"
-echo -e "Review $REPORT_FILENAME for detailed recommendations."
+echo -e "Review $REPORT_FILE for detailed recommendations."
 
 # Add summary to report
 echo "================================" >> "$REPORT_FILE"
@@ -485,7 +493,7 @@ echo "Please review all failed checks and implement the recommended fixes." >> "
 
 # If chown enabled, set ownership of report
 if [ "$ENABLE_CHOWN" = true ]; then
-	if ! chown "$REPORT_CHOWN_OWNER" "$REPORT_FILE"; then
-		echo -e "${RED}[ERROR] Failed to change ownership of ${REPORT_FILE}." >&2
-	fi
+    if ! chown "$REPORT_CHOWN_OWNER" "$REPORT_FILE"; then
+        echo -e "${RED}[ERROR] Failed to change ownership of ${REPORT_FILE}." >&2
+    fi
 fi
