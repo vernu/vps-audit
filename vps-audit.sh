@@ -308,6 +308,16 @@ esac
 # Check failed login attempts
 if [ -f "$AUTH_LOG_FILE" ]; then
     FAILED_LOGINS=$(grep -c "Failed password" "$AUTH_LOG_FILE" 2>/dev/null || echo 0)
+
+# if debian version > 10, info in journalctl
+elif [ -f "/etc/debian_version" ]; then
+    DEB_VERSION=$(cut -d'.' -f1 /etc/debian_version)
+    if [ "$DEB_VERSION" -gt 10 ]; then
+        FAILED_LOGINS=$(journalctl -u ssh --since "24 hours ago" 2>/dev/null | grep -c "Failed password" || echo 0)
+    else
+        FAILED_LOGINS=0
+        check_security "Auth Log" "WARN" "Log file $AUTH_LOG_FILE not found or unreadable. Assuming 0 failed login attempts."
+    fi
 else
     FAILED_LOGINS=0
     check_security "Auth Log" "WARN" "Log file $AUTH_LOG_FILE not found or unreadable. Assuming 0 failed login attempts."
