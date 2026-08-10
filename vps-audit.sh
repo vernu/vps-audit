@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-VPS_AUDIT_VERSION="0.1.0"
+VPS_AUDIT_VERSION="0.2.0"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -22,6 +22,7 @@ SSH_CONFIG_FILE="/etc/ssh/sshd_config"
 AUTH_LOG_FILE="/var/log/auth.log"
 SUDOERS_FILE="/etc/sudoers"
 PASSWORD_QUALITY_CONF="/etc/security/pwquality.conf"
+FAIL2BAN_CONFIG_DIR="/etc/fail2ban"
 
 # Resource Usage Thresholds (Disk/Memory/CPU %)
 RESOURCE_WARN=50  # WARN if usage is >= 50%
@@ -310,6 +311,114 @@ case "$IPS_INSTALLED$IPS_ACTIVE" in
     "10") check_security "Intrusion Prevention" "WARN" "Fail2ban or CrowdSec is installed but not running" ;;
     *)    check_security "Intrusion Prevention" "FAIL" "No intrusion prevention system (Fail2ban or CrowdSec) is installed" ;;
 esac
+
+# Resolve a port token to a number. Accepts a numeric port or a service name
+# such as "ssh", which fail2ban uses by default.
+resolve_port_token() {
+    local token="$1"
+    if [[ "$token" =~ ^[0-9]+$ ]]; then
+        echo "$token"
+    else
+        getent services "$token" 2>/dev/null | head -1 | awk '{print $2}' | cut -d'/' -f1
+    fi
+}
+
+# Test whether a fail2ban port list ("ssh", "2022", "ssh,2222", "0:65535")
+# covers a specific port number.
+port_list_contains() {
+    local list="$1" target="$2" token start end resolved
+    local IFS=','
+    for token in $list; do
+        token="${token//[[:space:]]/}"
+        [ -z "$token" ] && continue
+        if [[ "$token" == *:* ]]; then
+            start=$(resolve_port_token "${token%%:*}")
+            end=$(resolve_port_token "${token##*:}")
+            if [[ "$start" =~ ^[0-9]+$ ]] && [[ "$end" =~ ^[0-9]+$ ]]; then
+                if [ "$target" -ge "$start" ] && [ "$target" -le "$end" ]; then
+                    return 0
+                fi
+            fi
+        else
+            resolved=$(resolve_port_token "$token")
+            [ "$resolved" = "$target" ] && return 0
+        fi
+    done
+    return 1
+}
+
+# Read an option from a jail section, honouring fail2ban's file precedence:
+# jail.conf, then jail.d/*.conf, then jail.local, then jail.d/*.local (last wins).
+get_jail_option() {
+    local section="$1" option="$2" file value result=""
+    for file in "$FAIL2BAN_CONFIG_DIR/jail.conf" \
+                "$FAIL2BAN_CONFIG_DIR"/jail.d/*.conf \
+                "$FAIL2BAN_CONFIG_DIR/jail.local" \
+                "$FAIL2BAN_CONFIG_DIR"/jail.d/*.local; do
+        [ -f "$file" ] || continue
+        value=$(awk -v sect="$section" -v opt="$option" '
+            $0 ~ /^[[:space:]]*\[/ {
+                in_sect = ($0 ~ "^[[:space:]]*\\[" sect "\\][[:space:]]*$")
+                next
+            }
+            in_sect && $0 ~ "^[[:space:]]*" opt "[[:space:]]*=" {
+                sub(/^[^=]*=[[:space:]]*/, "")
+                sub(/[[:space:]]+$/, "")
+                val = $0
+            }
+            END { if (val != "") print val }
+        ' "$file" 2>/dev/null)
+        [ -n "$value" ] && result="$value"
+    done
+    echo "$result"
+}
+
+# Check that fail2ban's SSH jail actually covers the port sshd listens on.
+# The [sshd] jail inherits "port = ssh" (22) from jail.conf. When sshd runs on a
+# non-standard port, the generated firewall rule still targets 22, so every ban is
+# a silent no-op - while fail2ban keeps reporting the bans as successful.
+check_fail2ban_port_alignment() {
+    # Only meaningful when fail2ban itself is present.
+    if ! command -v fail2ban-client >/dev/null 2>&1 || [ ! -d "$FAIL2BAN_CONFIG_DIR" ]; then
+        return
+    fi
+
+    # Prefer sshd's own resolved config over grepping the files by hand.
+    local ssh_effective_port
+    ssh_effective_port=$(sshd -T 2>/dev/null | awk '/^port /{print $2; exit}')
+    [ -z "$ssh_effective_port" ] && ssh_effective_port="$SSH_PORT"
+    if ! [[ "$ssh_effective_port" =~ ^[0-9]+$ ]]; then
+        check_security "Fail2ban Port Alignment" "WARN" "Could not determine the effective SSH port - verify the fail2ban jail port manually"
+        return
+    fi
+
+    local jail_enabled jail_port jail_banaction
+    jail_enabled=$(get_jail_option "sshd" "enabled")
+    jail_port=$(get_jail_option "sshd" "port")
+    jail_banaction=$(get_jail_option "sshd" "banaction")
+    [ -z "$jail_banaction" ] && jail_banaction=$(get_jail_option "DEFAULT" "banaction")
+    [ -z "$jail_port" ] && jail_port="ssh"
+
+    if [ "$jail_enabled" != "true" ]; then
+        check_security "Fail2ban Port Alignment" "WARN" "The fail2ban [sshd] jail is not enabled - SSH brute force attempts are not being blocked"
+        return
+    fi
+
+    # An allports banaction blocks every port, so the jail port is irrelevant.
+    if [[ "$jail_banaction" == *allports* ]]; then
+        check_security "Fail2ban Port Alignment" "PASS" "The fail2ban [sshd] jail bans all ports (banaction=$jail_banaction), so SSH on port $ssh_effective_port is covered"
+        return
+    fi
+
+    if port_list_contains "$jail_port" "$ssh_effective_port"; then
+        check_security "Fail2ban Port Alignment" "PASS" "The fail2ban [sshd] jail covers the active SSH port $ssh_effective_port"
+    else
+        check_security "Fail2ban Port Alignment" "FAIL" "The fail2ban [sshd] jail blocks port '$jail_port' but SSH listens on $ssh_effective_port - every ban is silently ineffective. Set 'port = $ssh_effective_port' in $FAIL2BAN_CONFIG_DIR/jail.local, or use banaction = nftables[type=allports]"
+    fi
+}
+
+# Fail2ban jail port alignment check
+check_fail2ban_port_alignment
 
 # Check failed login attempts
 if [ -f "$AUTH_LOG_FILE" ]; then

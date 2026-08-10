@@ -17,6 +17,7 @@ A comprehensive Bash script for auditing the security and performance of your VP
   - Non-default port usage
 - **Firewall Status** (UFW/firewalld/iptables/nftables)
 - **Intrusion Prevention** (Fail2ban/CrowdSec) Configuration
+  - Fail2ban SSH jail port alignment (catches bans that silently do nothing)
 - **Failed Login Attempts**
 - **System Updates Status**
 - **Running Services** Analysis
@@ -145,6 +146,7 @@ You can adjust the paths the script uses to check critical configuration files:
 | `AUTH_LOG_FILE` | `/var/log/auth.log` | Log file checked for failed login attempts. |
 | `SUDOERS_FILE` | `/etc/sudoers` | File checked for sudo logging configuration. |
 | `PASSWORD_QUALITY_CONF` | `/etc/security/pwquality.conf` | Password complexity policy configuration file. |
+| `FAIL2BAN_CONFIG_DIR` | `/etc/fail2ban` | Fail2ban config directory, read to verify the SSH jail port. |
 
 ---
 
