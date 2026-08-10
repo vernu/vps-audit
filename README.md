@@ -52,9 +52,9 @@ A comprehensive Bash script for auditing the security and performance of your VP
 1. Download the script:
 
 ```bash
-wget https://raw.githubusercontent.com/vernu/vps-audit/main/vps-audit.sh
+wget https://raw.githubusercontent.com/Nuver-Labs/vps-audit/main/vps-audit.sh
 # or
-curl -O https://raw.githubusercontent.com/vernu/vps-audit/main/vps-audit.sh
+curl -O https://raw.githubusercontent.com/Nuver-Labs/vps-audit/main/vps-audit.sh
 ```
 
 2. Make the script executable:
