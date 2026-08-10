@@ -2,6 +2,8 @@
 
 A comprehensive Bash script for auditing the security and performance of your VPS (Virtual Private Server). This tool performs various security checks and provides a detailed report with recommendations for improvements.
 
+**[nuverlabs.com/vps-audit](https://nuverlabs.com/vps-audit?ref=github)** · a [Nuver Labs](https://nuverlabs.com?ref=github) project
+
 <!-- add a screenshot of the output here -->
 
 ![Sample Output](./screenshot.png)
@@ -168,6 +170,15 @@ Feel free to submit issues and enhancement requests!
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
+
+## About
+
+vps-audit is built and maintained by [Nuver Labs](https://nuverlabs.com?ref=github).
+
+- Project page: [nuverlabs.com/vps-audit](https://nuverlabs.com/vps-audit?ref=github)
+- More from us: [github.com/nuver-labs](https://github.com/nuver-labs)
 
 ## Security Notice
 

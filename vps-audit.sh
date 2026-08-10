@@ -91,11 +91,11 @@ print_info() {
 
 # Start the audit
 echo -e "${BLUE}${BOLD}VPS Security Audit Tool${NC}"
-echo -e "${GRAY}https://github.com/vernu/vps-audit${NC}"
+echo -e "${GRAY}https://nuverlabs.com/vps-audit${NC}"
 echo -e "${GRAY}Starting audit at $(date)${NC}\n"
 
 echo "VPS Security Audit Tool" > "$REPORT_FILE"
-echo "https://github.com/vernu/vps-audit" >> "$REPORT_FILE"
+echo "https://nuverlabs.com/vps-audit" >> "$REPORT_FILE"
 echo "Starting audit at $(date)" >> "$REPORT_FILE"
 echo "================================" >> "$REPORT_FILE"
 
