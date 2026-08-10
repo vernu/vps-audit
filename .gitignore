@@ -1,1 +1,55 @@
+# Audit reports
+# These contain the host's public IP, hostname, open ports and running
+# services. Never commit them.
 vps-audit-report*.txt
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+.*.sw?
+*.sublime-workspace
+
+# AI assistant tooling
+.claude/
+CLAUDE.local.md
+AGENTS.local.md
+.cursor/
+.aider*
+.continue/
+.windsurf/
+.github/copilot-instructions.local.md
+
+# oh-my-claudecode runtime state
+# .omc/skills is the intentional committable exception for project skills,
+# so ignore the contents rather than the directory itself.
+.omc/*
+!.omc/skills/
+
+# Logs and temp files
+*.log
+*.tmp
+*.bak
+*.orig
+*.rej
